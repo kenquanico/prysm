@@ -103,11 +103,13 @@ class HomeViewModel: ObservableObject {
     }
 }
 
-// MARK: - Header
+// MARK: - Header (profile tap opens Settings)
 struct HomeHeaderSection: View {
     let greeting: String
     let subtitle: String
     let name: String
+
+    @State private var showSettings = false
 
     private var dateString: String {
         let f = DateFormatter()
@@ -129,14 +131,20 @@ struct HomeHeaderSection: View {
                     .foregroundColor(DS.Color.textSecondary)
             }
             Spacer()
-            // Circle is correct — profile photo at 1:1 is always a circle
-            Image("Profile")
-                .resizable()
-                .scaledToFill()
-                .frame(width: 42, height: 42)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(DS.Color.border, lineWidth: 0.5))
-                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 3)
+
+            Button(action: { showSettings = true }) {
+                Image("Profile")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 42, height: 42)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(DS.Color.border, lineWidth: 0.5))
+                    .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
         }
         .padding(.top, DS.Space.sm)
     }
@@ -166,7 +174,6 @@ struct FocusModeTabBar: View {
                         .padding(.vertical, 10)
                         .background {
                             if isActive {
-                                // Capsule is correct for fully-pill tab indicators
                                 Capsule()
                                     .fill(.regularMaterial)
                                     .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
@@ -179,7 +186,6 @@ struct FocusModeTabBar: View {
         }
         .padding(4)
         .background {
-            // Capsule is correct for the full tab bar container pill
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay(
@@ -208,7 +214,6 @@ struct ActivityGridSection: View {
             ],
             spacing: 14
         ) {
-            // ── Readiness Card ──────────────────────────────────────
             ActivityCard(label: "Readiness", accent: readinessColor) {
                 HStack(spacing: 14) {
                     ZStack {
@@ -240,7 +245,6 @@ struct ActivityGridSection: View {
                 .padding(.top, 14)
             }
 
-            // ── Steps Card ──────────────────────────────────────────
             ActivityCard(label: "Steps", accent: Color.blue) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("6,240")
@@ -259,7 +263,6 @@ struct ActivityGridSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // ── Focus Card ──────────────────────────────────────────
             ActivityCard(label: "Focus", accent: Color.purple) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("2h 15m")
@@ -278,7 +281,6 @@ struct ActivityGridSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // ── Schedule Card ───────────────────────────────────────
             ActivityCard(label: "Schedule", accent: Color.teal) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("3")
@@ -328,7 +330,6 @@ struct ActivityCard<Content: View>: View {
         .frame(maxWidth: .infinity)
         .frame(height: 160)
         .background(
-            // 20pt continuous = Apple widget/card squircle standard
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(Color.white)
         )
@@ -352,7 +353,6 @@ struct MiniBarGraph: View {
                 HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(values.indices, id: \.self) { i in
                         let h = max(3, geo.size.height * CGFloat(values[i]))
-                        // 2pt continuous = smallest meaningful squircle bar cap
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(accentColor.opacity(values[i] > 0.05 ? 0.75 : 0.12))
                             .frame(width: barWidth, height: h)
@@ -388,7 +388,6 @@ struct EventTimelineStrip: View {
         VStack(spacing: 4) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    // 1pt continuous track line
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
                         .fill(accentColor.opacity(0.15))
                         .frame(height: 2)
@@ -398,7 +397,6 @@ struct EventTimelineStrip: View {
                     ForEach(events.indices, id: \.self) { i in
                         let pct = CGFloat(events[i].hour) / 23.0
                         let x = pct * (geo.size.width - 8)
-                        // Circle is correct for event dots at 1:1
                         Circle()
                             .fill(accentColor)
                             .frame(width: 8, height: 8)
@@ -452,7 +450,6 @@ struct HomeTodaySection: View {
             }
             .padding(DS.Space.base)
             .background(
-                // 20pt continuous list container panel
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(DS.Color.surface)
             )
@@ -469,7 +466,6 @@ struct HomeTimeBlockRow: View {
     var body: some View {
         HStack(spacing: 18) {
 
-            // ── Left: Bold Icon ──────────────────────────────────
             Image(systemName: block.icon)
                 .font(.system(size: 26, weight: .bold))
                 .foregroundColor(
@@ -479,7 +475,6 @@ struct HomeTimeBlockRow: View {
                 )
                 .frame(width: 36, alignment: .center)
 
-            // ── Center: Title + Meta ─────────────────────────────
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(block.title)
@@ -517,8 +512,6 @@ struct HomeTimeBlockRow: View {
 
             Spacer()
 
-            // ── Right: Circle Check ──────────────────────────────
-            // Circle is correct for a checkbox at 1:1
             ZStack {
                 Circle()
                     .stroke(
@@ -580,10 +573,7 @@ struct RSVPBanner: View {
 
                 Divider().opacity(0.3)
 
-                // ── Middle: App Icon + Event Info ────────────────────
                 HStack(alignment: .center, spacing: 18) {
-
-                    // App icon — 16pt continuous squircle (matches iOS app icon standard)
                     ZStack {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(
@@ -600,7 +590,6 @@ struct RSVPBanner: View {
                             .foregroundColor(.white)
                     }
 
-                    // Event Details
                     VStack(alignment: .leading, spacing: 5) {
                         Text("RSVP needed")
                             .font(.system(size: 11, weight: .semibold))
@@ -624,10 +613,8 @@ struct RSVPBanner: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
 
-                // ── Status Row ───────────────────────────────────────
                 HStack(spacing: 8) {
                     HStack(spacing: 5) {
-                        // Circle correct for status dot at 1:1
                         Circle()
                             .fill(invite.dayStatus == .free ? DS.Color.positive :
                                   invite.dayStatus == .light ? DS.Color.warning : DS.Color.negative)
@@ -640,7 +627,6 @@ struct RSVPBanner: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(
-                        // 10pt continuous for compact status chip
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(
                                 (invite.dayStatus == .free ? DS.Color.positive :
@@ -672,10 +658,8 @@ struct RSVPBanner: View {
 
                 Divider().opacity(0.3)
 
-                // ── Action Buttons ───────────────────────────────────
                 GlassEffectContainer(spacing: 10) {
                     HStack(spacing: 10) {
-
                         Button {
                             respond("Snoozed")
                         } label: {
@@ -712,7 +696,6 @@ struct RSVPBanner: View {
                     .padding(.vertical, 16)
                 }
             }
-            // 24pt continuous for large floating panel — matches hero card scale
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: Color.black.opacity(0.08), radius: 20, x: 0, y: 8)
             .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
@@ -726,7 +709,7 @@ struct RSVPBanner: View {
     }
 }
 
-// MARK: - RSVP Button (solid color)
+// MARK: - RSVP Button
 struct RSVPButton: View {
     let label: String
     let icon: String
@@ -745,7 +728,6 @@ struct RSVPButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(color)
-            // 12pt continuous for compact action button
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -780,7 +762,6 @@ struct HomeSuggestionBanner: View {
                         .foregroundColor(DS.Color.textTertiary)
                         .frame(width: 26, height: 26)
                         .background(
-                            // Circle correct for dismiss button at 1:1
                             Circle().fill(DS.Color.surfaceHigh)
                         )
                 }
@@ -793,7 +774,6 @@ struct HomeSuggestionBanner: View {
                         .padding(.horizontal, DS.Space.md)
                         .padding(.vertical, DS.Space.xs + 2)
                         .background(DS.Color.textPrimary)
-                        // Capsule correct for short pill CTA
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -801,7 +781,6 @@ struct HomeSuggestionBanner: View {
         }
         .padding(DS.Space.base)
         .background(
-            // 20pt continuous surface card
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(DS.Color.surface)
         )
