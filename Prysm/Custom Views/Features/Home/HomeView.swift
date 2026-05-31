@@ -288,25 +288,27 @@ struct ActivityGridSection: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            ActivityCard(label: "Schedule", accent: Color.teal) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("3")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundColor(DS.Color.textPrimary)
-                    Text("events remaining")
-                        .font(.system(size: 11))
-                        .foregroundColor(DS.Color.textSecondary)
-                    Spacer(minLength: 4)
-                    EventTimelineStrip(
-                        events: [
-                            EventDot(hour: 9,  label: "Standup"),
-                            EventDot(hour: 13, label: "Lunch"),
-                            EventDot(hour: 16, label: "Review")
-                        ],
-                        accentColor: Color.teal
-                    )
+            NavigationLink (destination: ScheduleView()) {
+                ActivityCard(label: "Schedule", accent: Color.teal) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("3")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundColor(DS.Color.textPrimary)
+                        Text("events remaining")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Color.textSecondary)
+                        Spacer(minLength: 4)
+                        EventTimelineStrip(
+                            events: [
+                                EventDot(hour: 9,  label: "Standup"),
+                                EventDot(hour: 13, label: "Lunch"),
+                                EventDot(hour: 16, label: "Review")
+                            ],
+                            accentColor: Color.teal
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

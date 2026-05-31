@@ -109,7 +109,7 @@ struct AppTabRootView: View {
     var body: some View {
         switch tab {
         case .home:    NavigationStack { HomeView() }
-        case .plan:    PlanView()
+        case .plan:    NavigationStack { PlanView() }
         case .habits:  HabitsFullView()
         case .pickOne: JustPickOneView()
         }

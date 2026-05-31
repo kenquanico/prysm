@@ -2,9 +2,6 @@
 //  Models.swift
 //  Prysm
 //
-//  All data models and sample data in one place.
-//  Every model is value-type (struct) unless observation demands a class.
-//
 
 import SwiftUI
 
@@ -26,7 +23,7 @@ struct FocusMode: Identifiable, Hashable {
     ]
 }
 
-// MARK: - Context Card (Home quick-stats)
+// MARK: - Context Card
 struct ContextCard: Identifiable {
     let id = UUID()
     var icon: String
@@ -42,6 +39,47 @@ struct ContextCard: Identifiable {
     ]
 }
 
+// MARK: - Block Category (shared top-level)
+enum BlockCategory: CaseIterable {
+    case study, health, lecture, focus, rest, meeting, errand
+
+    var color: Color {
+        switch self {
+        case .study:   return DS.Color.categoryA
+        case .health:  return DS.Color.categoryB
+        case .lecture: return DS.Color.categoryC
+        case .focus:   return DS.Color.accent
+        case .rest:    return DS.Color.categoryE
+        case .meeting: return DS.Color.negative
+        case .errand:  return DS.Color.categoryD
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .study:   return "Study"
+        case .health:  return "Health"
+        case .lecture: return "Lecture"
+        case .focus:   return "Focus"
+        case .rest:    return "Rest"
+        case .meeting: return "Meeting"
+        case .errand:  return "Errand"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .study:   return "book.fill"
+        case .health:  return "heart.fill"
+        case .lecture: return "graduationcap.fill"
+        case .focus:   return "brain.head.profile"
+        case .rest:    return "moon.fill"
+        case .meeting: return "person.2.fill"
+        case .errand:  return "bag.fill"
+        }
+    }
+}
+
 // MARK: - Time Block (Home today view)
 struct TimeBlock: Identifiable {
     let id = UUID()
@@ -53,23 +91,6 @@ struct TimeBlock: Identifiable {
     var isNow: Bool = false
     var isDone: Bool = false
     var category: BlockCategory
-
-    enum BlockCategory {
-        case study, health, lecture, focus, rest, meeting, errand, creative
-
-        var color: Color {
-            switch self {
-            case .study:    return DS.Color.categoryA
-            case .health:   return DS.Color.categoryB
-            case .lecture:  return DS.Color.categoryC
-            case .focus:    return DS.Color.accent
-            case .rest:     return DS.Color.categoryE
-            case .meeting:  return DS.Color.negative
-            case .errand:   return DS.Color.categoryD
-            case .creative: return DS.Color.categoryE
-            }
-        }
-    }
 
     static let sampleData: [TimeBlock] = [
         TimeBlock(time: "7:00",  title: "Morning run",      subtitle: "30 min · Fitness",        icon: "figure.run",    duration: "30m",  isDone: true,  category: .health),
@@ -97,7 +118,7 @@ struct HabitItem: Identifiable {
     ]
 }
 
-// MARK: - Full Habit (Habits tab)
+// MARK: - Full Habit
 struct FullHabit: Identifiable {
     let id = UUID()
     var icon: String
@@ -106,7 +127,7 @@ struct FullHabit: Identifiable {
     var streak: Int
     var bestStreak: Int
     var isCheckedToday: Bool
-    var weekHistory: [Bool]     // 7 values, index 0 = Monday
+    var weekHistory: [Bool]
     var category: HabitCategory
 
     enum HabitCategory: String, CaseIterable {
@@ -143,7 +164,7 @@ struct FullHabit: Identifiable {
     ]
 }
 
-// MARK: - Plan Block (Plan tab)
+// MARK: - Plan Block
 struct PlanBlock: Identifiable {
     let id = UUID()
     var date: Date
@@ -157,25 +178,8 @@ struct PlanBlock: Identifiable {
     var isDone: Bool = false
     var category: BlockCategory
 
-    enum BlockCategory {
-        case study, health, lecture, focus, rest, meeting, errand
-
-        var color: Color {
-            switch self {
-            case .study:   return DS.Color.categoryA
-            case .health:  return DS.Color.categoryB
-            case .lecture: return DS.Color.categoryC
-            case .focus:   return DS.Color.accent
-            case .rest:    return DS.Color.categoryE
-            case .meeting: return DS.Color.negative
-            case .errand:  return DS.Color.categoryD
-            }
-        }
-    }
-
     static let sampleData: [PlanBlock] = {
         let today = Date()
-        let cal = Calendar.current
         return [
             PlanBlock(date: today, startTime: "7:00",  endTime: "7:30",  title: "Morning run",      subtitle: "30 min · Fitness",      icon: "figure.run",    duration: "30m",  durationMinutes: 30,  isDone: true, category: .health),
             PlanBlock(date: today, startTime: "8:00",  endTime: "10:00", title: "Study session",    subtitle: "iOS Dev · Deep work",   icon: "book",          duration: "2h",   durationMinutes: 120,             category: .study),
@@ -230,7 +234,7 @@ struct UnscheduledTask: Identifiable {
     ]
 }
 
-// MARK: - RSVP Invitation (social commitment engine)
+// MARK: - RSVP Invitation
 struct RSVPInvitation: Identifiable {
     let id = UUID()
     var eventName: String
@@ -246,9 +250,9 @@ struct RSVPInvitation: Identifiable {
     enum DayStatus: String       { case free = "Free", light = "Light", busy = "Busy" }
     enum EnergyForecast: String  { case high = "High", medium = "Medium", low = "Low" }
     enum RelationshipWeight: String {
-        case close       = "Close friend"
-        case family      = "Family"
-        case colleague   = "Colleague"
+        case close        = "Close friend"
+        case family       = "Family"
+        case colleague    = "Colleague"
         case acquaintance = "Acquaintance"
     }
 
@@ -258,7 +262,7 @@ struct RSVPInvitation: Identifiable {
     ]
 }
 
-// MARK: - Daily Summary (Plan tab computed)
+// MARK: - Daily Summary
 struct DailySummary {
     var totalBlocks: Int
     var doneBlocks: Int

@@ -263,34 +263,42 @@ struct DailySummaryGrid: View {
             ],
             spacing: 14
         ) {
-            PlanStatCard(
-                icon: "square.stack.fill",
-                value: "\(summary.totalBlocks)",
-                label: "blocks",
-                sublabel: "total today",
-                accent: DS.Color.accent
-            )
-            PlanStatCard(
-                icon: "checkmark.circle.fill",
-                value: "\(summary.doneBlocks)",
-                label: "done",
-                sublabel: "completed",
-                accent: DS.Color.positive
-            )
-            PlanStatCard(
-                icon: "clock.fill",
-                value: formatMin(summary.totalMinutes),
-                label: "scheduled",
-                sublabel: "blocked time",
-                accent: DS.Color.warning
-            )
-            PlanStatCard(
-                icon: "wind",
-                value: formatMin(summary.freeMinutes),
-                label: "free",
-                sublabel: "open time",
-                accent: DS.Color.textTertiary
-            )
+            NavigationLink(destination: BlocksView()) {
+                PlanStatCard(
+                    icon: "square.stack.fill",
+                    value: "\(summary.totalBlocks)",
+                    label: "blocks",
+                    sublabel: "total today",
+                    accent: DS.Color.accent
+                )
+            }
+            NavigationLink(destination: BlocksView()) {
+                PlanStatCard(
+                    icon: "checkmark.circle.fill",
+                    value: "\(summary.doneBlocks)",
+                    label: "done",
+                    sublabel: "completed",
+                    accent: DS.Color.positive
+                )
+            }
+            NavigationLink(destination: BlocksView()) {
+                PlanStatCard(
+                    icon: "clock.fill",
+                    value: formatMin(summary.totalMinutes),
+                    label: "scheduled",
+                    sublabel: "blocked time",
+                    accent: DS.Color.warning
+                )
+            }
+            NavigationLink(destination: BlocksView()) {
+                PlanStatCard(
+                    icon: "wind",
+                    value: formatMin(summary.freeMinutes),
+                    label: "free",
+                    sublabel: "open time",
+                    accent: DS.Color.textTertiary
+                )
+            }
         }
     }
 

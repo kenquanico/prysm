@@ -2,14 +2,6 @@
 //  FocusView.swift
 //  Prysm
 //
-//  Created by Ken Aldrey Quanico on 5/31/26.
-//
-
-
-//
-//  FocusView.swift
-//  Prysm
-//
 
 import SwiftUI
 import Observation
@@ -535,14 +527,10 @@ struct FocusSessionRow: View {
 
     var body: some View {
         HStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(session.type.color.opacity(0.12))
-                    .frame(width: 36, height: 36)
-                Image(systemName: session.type.icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(session.type.color)
-            }
+            Image(systemName: session.type.icon)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundColor(session.type.color)
+                .frame(width: 36, height: 36)
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
