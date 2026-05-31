@@ -214,73 +214,80 @@ struct ActivityGridSection: View {
             ],
             spacing: 14
         ) {
-            ActivityCard(label: "Readiness", accent: readinessColor) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        ProgressRing(
-                            progress: Double(readiness) / 100,
-                            size: 72,
-                            lineWidth: 5,
-                            trackColor: Color.black.opacity(0.08),
-                            ringColor: readinessColor
+            NavigationLink(destination: ReadinessView()) {
+                ActivityCard(label: "Readiness", accent: readinessColor) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            ProgressRing(
+                                progress: Double(readiness) / 100,
+                                size: 72,
+                                lineWidth: 5,
+                                trackColor: Color.black.opacity(0.08),
+                                ringColor: readinessColor
+                            )
+                            Text("\(readiness)")
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .foregroundColor(DS.Color.textPrimary)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Peak")
+                                .font(.system(size: 11))
+                                .foregroundColor(DS.Color.textSecondary)
+                            Text("9–11 AM")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(DS.Color.textPrimary)
+                            Text("Good sleep")
+                                .font(.system(size: 11))
+                                .foregroundColor(DS.Color.textSecondary)
+                        }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 14)
+                }
+            }
+            .buttonStyle(.plain)
+            
+            NavigationLink(destination: StepsView()) {
+                
+                
+                ActivityCard(label: "Steps", accent: Color.blue) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("6,240")
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundColor(DS.Color.textPrimary)
+                        Text("of 10k goal")
+                            .font(.system(size: 11))
+                            .foregroundColor(DS.Color.textSecondary)
+                        Spacer(minLength: 4)
+                        MiniBarGraph(
+                            values: [0.1, 0.3, 0.5, 0.8, 0.6, 0.4, 0.7, 0.9, 0.5, 0.3, 0.2, 0.4],
+                            accentColor: Color.blue,
+                            timeLabels: ["12AM", "6AM", "12PM", "6PM"]
                         )
-                        Text("\(readiness)")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundColor(DS.Color.textPrimary)
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Peak")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            NavigationLink(destination: FocusView()) {
+                ActivityCard(label: "Focus", accent: Color.purple) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("2h 15m")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(DS.Color.textPrimary)
+                        Text("deep work today")
                             .font(.system(size: 11))
                             .foregroundColor(DS.Color.textSecondary)
-                        Text("9–11 AM")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(DS.Color.textPrimary)
-                        Text("Good sleep")
-                            .font(.system(size: 11))
-                            .foregroundColor(DS.Color.textSecondary)
+                        Spacer(minLength: 4)
+                        MiniBarGraph(
+                            values: [0, 0, 0.2, 0.9, 1.0, 0.8, 0.1, 0.6, 0.7, 0.3, 0, 0],
+                            accentColor: Color.purple,
+                            timeLabels: ["12AM", "6AM", "12PM", "6PM"]
+                        )
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 14)
             }
-
-            ActivityCard(label: "Steps", accent: Color.blue) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("6,240")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(DS.Color.textPrimary)
-                    Text("of 10k goal")
-                        .font(.system(size: 11))
-                        .foregroundColor(DS.Color.textSecondary)
-                    Spacer(minLength: 4)
-                    MiniBarGraph(
-                        values: [0.1, 0.3, 0.5, 0.8, 0.6, 0.4, 0.7, 0.9, 0.5, 0.3, 0.2, 0.4],
-                        accentColor: Color.blue,
-                        timeLabels: ["12AM", "6AM", "12PM", "6PM"]
-                    )
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            ActivityCard(label: "Focus", accent: Color.purple) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("2h 15m")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundColor(DS.Color.textPrimary)
-                    Text("deep work today")
-                        .font(.system(size: 11))
-                        .foregroundColor(DS.Color.textSecondary)
-                    Spacer(minLength: 4)
-                    MiniBarGraph(
-                        values: [0, 0, 0.2, 0.9, 1.0, 0.8, 0.1, 0.6, 0.7, 0.3, 0, 0],
-                        accentColor: Color.purple,
-                        timeLabels: ["12AM", "6AM", "12PM", "6PM"]
-                    )
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
             ActivityCard(label: "Schedule", accent: Color.teal) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("3")

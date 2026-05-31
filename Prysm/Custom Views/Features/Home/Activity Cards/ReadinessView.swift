@@ -4,69 +4,155 @@
 //
 
 import SwiftUI
+import Observation
 
 // MARK: - Root
 struct ReadinessView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var vm = ReadinessViewModel()
-    @State private var appeared = false
+    @State private var vm             = ReadinessViewModel()
+    @State private var appeared       = false
+    @State private var scrollY: CGFloat = 0
+
+    // 0 = top of scroll, 1 = bar fully opaque (after 60 pt)
+    private var barProgress: CGFloat { min(1, max(0, scrollY / 60)) }
 
     var body: some View {
         ZStack(alignment: .top) {
             DS.Color.bg.ignoresSafeArea()
 
+            // ── Scrollable content ──────────────────────────────
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 28) {
 
-                    // Nav header
-                    ReadinessNavHeader(score: vm.score) {
-                        dismiss()
+                    // Offset anchor
+                    GeometryReader { geo in
+                        Color.clear.preference(
+                            key: ScrollOffsetKey.self,
+                            value: -geo.frame(in: .named("readinessScroll")).minY
+                        )
                     }
-                    .staggeredAppear(appeared, delay: 0.04)
+                    .frame(height: 0)
 
-                    // Hero ring
                     ReadinessHeroRing(
                         score: vm.score,
                         label: vm.scoreLabel,
                         sublabel: vm.scoreSublabel,
                         ringColor: vm.ringColor
                     )
-                    .staggeredAppear(appeared, delay: 0.10)
+                    .staggeredAppear(appeared, delay: 0.06)
 
-                    // Week strip
                     ReadinessWeekStrip(days: vm.weekDays)
-                        .staggeredAppear(appeared, delay: 0.16)
+                        .staggeredAppear(appeared, delay: 0.12)
 
-                    // Pillar grid
                     ReadinessPillarGrid(pillars: vm.pillars)
-                        .staggeredAppear(appeared, delay: 0.22)
+                        .staggeredAppear(appeared, delay: 0.18)
 
-                    // Peak window card
                     ReadinessPeakCard(
                         peakStart: vm.peakStart,
                         peakEnd: vm.peakEnd,
                         energySummary: vm.energySummary
                     )
-                    .staggeredAppear(appeared, delay: 0.30)
+                    .staggeredAppear(appeared, delay: 0.26)
 
-                    // History chart
                     ReadinessHistoryCard(history: vm.history)
-                        .staggeredAppear(appeared, delay: 0.36)
+                        .staggeredAppear(appeared, delay: 0.32)
 
                     Spacer(minLength: DS.Space.xxxl)
                 }
                 .padding(.horizontal, DS.Space.base)
-                .padding(.top, DS.Space.sm)
+                .padding(.top, 80) // clear the floating bar
             }
+            .coordinateSpace(name: "readinessScroll")
+            .onPreferenceChange(ScrollOffsetKey.self) { scrollY = $0 }
+
+            // ── Floating liquid-glass nav bar ────────────────────
+            ReadinessFloatingBar(barProgress: barProgress) { dismiss() }
         }
         .onAppear { appeared = true }
         .navigationBarHidden(true)
     }
 }
 
+// MARK: - Scroll offset preference key
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+/// MARK: - Floating Nav Bar
+struct ReadinessFloatingBar: View {
+    let barProgress: CGFloat
+    let onBack: () -> Void
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(Double(barProgress))
+                .overlay(alignment: .bottom) {
+                    Divider().opacity(Double(barProgress) * 0.35)
+                }
+                .ignoresSafeArea(edges: .top)
+
+            // ── ONE container for the whole bar so buttons morph together ──
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+
+                    // ── Back button ──────────────────────────────
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#000000"))
+                            .frame(width: 52, height: 52)
+                    }
+                    .glassEffect(.regular.interactive(), in: Circle())
+
+                    Spacer()
+
+                    // ── Title ────────────────────────────────────
+                    VStack(spacing: 1) {
+                        Text("Readiness")
+                            .font(DS.Font.subheadline())
+                            .foregroundColor(DS.Color.textPrimary)
+                        Text("Today")
+                            .font(DS.Font.caption1())
+                            .foregroundColor(DS.Color.textTertiary)
+                    }
+                    .opacity(Double(barProgress))
+                    .animation(.easeInOut(duration: 0.2), value: barProgress)
+
+                    Spacer()
+
+                    Color.clear.frame(width: 52, height: 52)
+                }
+                .padding(.horizontal, DS.Space.base)
+                .padding(.top, 8)
+            }
+        }
+        .frame(height: 64)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Button Style
+// Scale INWARD so the glass layer morphs around the compression
+struct LiquidGlassButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
+            .animation(
+                .spring(response: 0.3, dampingFraction: 0.6),
+                value: configuration.isPressed
+            )
+    }
+}
 // MARK: - View Model
-class ReadinessViewModel: ObservableObject {
-    let score: Int = 78
+// @Observable requires iOS 17+. See the fallback comment at the bottom for iOS 16.
+@Observable
+final class ReadinessViewModel {
+    var score: Int = 78
 
     var scoreLabel: String {
         score >= 85 ? "Optimal" : score >= 65 ? "Good" : score >= 45 ? "Fair" : "Low"
@@ -112,46 +198,6 @@ class ReadinessViewModel: ObservableObject {
 
     var history: [Int] {
         [65, 70, 55, 80, 74, 68, 60, 77, 82, 78, 73, 78, 71, 78]
-    }
-}
-
-// MARK: - Nav Header
-struct ReadinessNavHeader: View {
-    let score: Int
-    let onBack: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center) {
-            Button(action: onBack) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(DS.Color.textPrimary)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        Circle()
-                            .fill(DS.Color.surface)
-                    )
-                    .shadow(color: Color.black.opacity(0.07), radius: 8, x: 0, y: 3)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            VStack(spacing: 1) {
-                Text("Readiness")
-                    .font(DS.Font.title3())
-                    .foregroundColor(DS.Color.textPrimary)
-                Text("Today · May 30")
-                    .font(DS.Font.footnote())
-                    .foregroundColor(DS.Color.textTertiary)
-            }
-
-            Spacer()
-
-            // Spacer mirror for centering
-            Color.clear.frame(width: 40, height: 40)
-        }
-        .padding(.top, DS.Space.sm)
     }
 }
 
@@ -335,13 +381,8 @@ struct ReadinessPillarCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: pillar.icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(pillar.accent)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(pillar.accent.opacity(0.12))
-                    )
 
                 Spacer()
 
@@ -587,3 +628,23 @@ struct ReadinessHistoryCard: View {
 #Preview {
     ReadinessView()
 }
+
+/*
+ ─────────────────────────────────────────────────────────────
+ iOS 16 FALLBACK
+ If your deployment target is iOS 16 or below, replace the
+ @Observable class above with ObservableObject like so:
+
+     class ReadinessViewModel: ObservableObject {
+         @Published var score: Int = 78
+         // all computed vars stay exactly the same
+     }
+
+ And in ReadinessView swap:
+     @State private var vm = ReadinessViewModel()
+ for:
+     @StateObject private var vm = ReadinessViewModel()
+
+ Also remove `import Observation` from the top.
+ ─────────────────────────────────────────────────────────────
+ */

@@ -100,16 +100,15 @@ struct AppTabView: View {
             }
         }
         .tint(Color(hex: "#4eabae"))
-        // ✅ REMOVED the onChange block that was redirecting away from pickOne
     }
 }
 
-// MARK: - Tab Root View switcher (used by both paths)
+// MARK: - Tab Root View switcher
 struct AppTabRootView: View {
     let tab: ContentView.Tab
     var body: some View {
         switch tab {
-        case .home:    HomeView()
+        case .home:    NavigationStack { HomeView() }
         case .plan:    PlanView()
         case .habits:  HabitsFullView()
         case .pickOne: JustPickOneView()
@@ -117,16 +116,19 @@ struct AppTabRootView: View {
     }
 }
 
-// MARK: - Custom Tab Bar (pre-iOS-26 / always-custom fallback)
+// MARK: - Custom Tab Bar
 //
 // Layout (Apple split-pill pattern):
-//   ┌─────────────────────────┐   ┌───────────┐
-//   │  Home    Plan    Habits  │   │ ⚡ Pick One │
-//   └─────────────────────────┘   └───────────┘
+//   ┌─────────────────────────────┐   ┌────────────┐
+//   │  [Core]   [Plan]  [Habits]  │   │ [⚡Pick One] │
+//   └─────────────────────────────┘   └────────────┘
+//
+// Each outer capsule is a single liquid-glass surface via GlassEffectContainer.
+// Active tab gets .regular.interactive() pill; inactive gets .clear.interactive().
+// No manual backgrounds — glass handles all surfaces.
 //
 struct CustomTabBar: View {
     @Binding var selected: ContentView.Tab
-    @Namespace private var selectorNS
 
     private let groupTabs: [ContentView.Tab] = [.home, .plan, .habits]
     private let soloTab:    ContentView.Tab  = .pickOne
@@ -134,98 +136,54 @@ struct CustomTabBar: View {
     var body: some View {
         HStack(spacing: DS.Space.sm) {
 
-            // ── Left cluster ─────────────────────────────────────────
-            HStack(spacing: 0) {
-                ForEach(groupTabs, id: \.self) { tab in
-                    segmentedItem(tab)
+            // ── Left cluster — one shared glass surface ───────────────
+            GlassEffectContainer(spacing: 0) {
+                HStack(spacing: 0) {
+                    ForEach(groupTabs, id: \.self) { tab in
+                        tabItem(tab)
+                    }
                 }
-            }
-            .padding(.horizontal, DS.Space.xs)
-            .padding(.vertical, DS.Space.xs)
-            .background {
-                RoundedRectangle(cornerRadius: 48, style: .continuous)
-                    .fill(Color.clear)
-                    .shadow(color: .black.opacity(0.08), radius: 44, x: 0, y: 10)
+                .glassEffect(in: Capsule())          // outer capsule shell
             }
 
-            // ── Right solo pill ───────────────────────────────────────
-            soloItem(soloTab)
-                .padding(.horizontal, DS.Space.lg)
-                .padding(.vertical, DS.Space.md)
-                .background {
-                    RoundedRectangle(cornerRadius: 48, style: .continuous)
-                        .fill(Color.clear)
-                        .shadow(color: .black.opacity(0.08), radius: 44, x: 0, y: 10)
-                }
+            // ── Right solo pill — its own glass surface ───────────────
+            GlassEffectContainer(spacing: 0) {
+                tabItem(soloTab)
+                    .glassEffect(in: Capsule())      // solo pill shell
+            }
         }
     }
 
-    // MARK: Segmented item (left cluster)
+    // MARK: – Shared tab item builder
     @ViewBuilder
-    private func segmentedItem(_ tab: ContentView.Tab) -> some View {
+    private func tabItem(_ tab: ContentView.Tab) -> some View {
         let isActive = selected == tab
 
         Button {
-            withAnimation(DS.Animation.snappy) { selected = tab }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                selected = tab
+            }
         } label: {
-            VStack(spacing: DS.Space.xs) {
+            VStack(spacing: 4) {
                 Image(systemName: isActive ? "\(tab.rawValue).fill" : tab.rawValue)
-                    .font(.system(size: 22, weight: isActive ? .semibold : .regular))
-                    .foregroundStyle(
-                        isActive
-                        ? AnyShapeStyle(Color(hex: "#5b8fcb"))
-                        : AnyShapeStyle(Color.secondary)
-                    )
-                    .scaleEffect(isActive ? 1.06 : 1.0)
-                    .animation(DS.Animation.snappy, value: isActive)
+                    .font(.system(size: 21, weight: isActive ? .semibold : .regular))
+                    .foregroundStyle(isActive ? Color.primary : Color.secondary)
+                    .scaleEffect(isActive ? 1.08 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isActive)
 
                 Text(tab.label)
                     .font(DS.Font.caption2())
                     .foregroundStyle(isActive ? Color.primary : Color.secondary)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, DS.Space.md)
+            .padding(.horizontal, tab.isSolo ? DS.Space.lg : DS.Space.md)
             .padding(.vertical, DS.Space.sm)
-            .background {
-                if isActive {
-                    RoundedRectangle(cornerRadius: 38, style: .continuous)
-                        .fill(.regularMaterial)
-                        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
-                        .matchedGeometryEffect(id: "selector", in: selectorNS)
-                }
-            }
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: Solo pill item (right)
-    @ViewBuilder
-    private func soloItem(_ tab: ContentView.Tab) -> some View {
-        let isActive = selected == tab
-
-        Button {
-            withAnimation(DS.Animation.snappy) { selected = tab }
-        } label: {
-            VStack(spacing: DS.Space.xs) {
-                Image(systemName: tab.rawValue)
-                    .font(.system(size: 22, weight: isActive ? .semibold : .regular))
-                    .foregroundStyle(
-                        isActive
-                        ? AnyShapeStyle(Color(hex: "#5b8fcb"))
-                        : AnyShapeStyle(Color.secondary)
-                    )
-                    .scaleEffect(isActive ? 1.06 : 1.0)
-                    .animation(DS.Animation.snappy, value: isActive)
-
-                Text(tab.label)
-                    .font(DS.Font.caption2())
-                    .foregroundStyle(
-                        isActive
-                        ? AnyShapeStyle(Color(hex: "#5b8fcb"))
-                        : AnyShapeStyle(Color.secondary)
-                    )
-            }
-        }
-        .buttonStyle(.plain)
+        // Active = floating glass pill lifted above the outer shell.
+        // Inactive = transparent so the outer shell shows through cleanly.
+        .glassEffect(
+            isActive ? .regular.interactive() : .clear.interactive(),
+            in: Capsule()
+        )
     }
 }
