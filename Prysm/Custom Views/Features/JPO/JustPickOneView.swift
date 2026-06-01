@@ -2,15 +2,18 @@
 //  JustPickOneView.swift
 //  Prysm
 //
-//  "Just Pick One" — redesigned to match HabitsFullView design language.
-//  Same header pattern, same hero card, same section headers,
-//  same surface card + shadow system, same row anatomy.
+//  Meal-plan feature only.
+//  Aligned to product doc: Fridge Vision scan, single suggestion output,
+//  confidence tag, pantry expiry awareness, schedule-aware prep time.
+//  Design language: mirrors HabitsFullView exactly (same DS tokens, same
+//  card anatomy, same row pattern, same hero, same section headers).
 //
 
 import SwiftUI
 import Combine
 
 // MARK: - Root
+
 struct JustPickOneView: View {
     @StateObject private var vm = JustPickOneViewModel()
     @State private var appeared = false
@@ -24,55 +27,67 @@ struct JustPickOneView: View {
 
                     JPOHeaderSection(
                         availableMinutes: vm.availableMinutes,
-                        energyLevel:      vm.energyLevel
+                        energyLevel:      vm.energyLevel,
+                        timeWindow:       vm.timeWindow
                     )
                     .staggeredAppear(appeared, delay: 0.04)
 
                     JPOContextHero(
                         availableMinutes: vm.availableMinutes,
                         energyLevel:      vm.energyLevel,
-                        timeWindow:       vm.timeWindow,
-                        mealAccepted:     vm.mealAccepted,
-                        taskAccepted:     vm.taskAccepted
+                        mealAccepted:     vm.mealAccepted
                     )
                     .staggeredAppear(appeared, delay: 0.10)
 
                     MealDecisionCard(vm: vm)
                         .staggeredAppear(appeared, delay: 0.18)
 
-                    TaskDecisionCard(vm: vm)
-                        .staggeredAppear(appeared, delay: 0.24)
-
                     PantryStatusSection(items: vm.pantryItems)
-                        .staggeredAppear(appeared, delay: 0.30)
+                        .staggeredAppear(appeared, delay: 0.24)
 
                     Spacer(minLength: DS.Space.xxxl)
                 }
                 .padding(.horizontal, DS.Space.base)
                 .padding(.top, DS.Space.sm)
             }
+
+            // Fridge scan overlay
+            if vm.showFridgeScan {
+                FridgeScanOverlay(vm: vm)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    .zIndex(10)
+            }
         }
         .onAppear { appeared = true }
+        .animation(DS.Animation.standard, value: vm.showFridgeScan)
     }
 }
 
 // MARK: - View Model
+
 class JustPickOneViewModel: ObservableObject {
 
-    @Published var currentMeal: MealSuggestion    = MealSuggestion.suggestions[0]
-    @Published var mealAccepted: Bool             = false
-    @Published var mealSkipCount: Int             = 0
-    @Published var isScanning: Bool               = false
+    // Meal
+    @Published var currentMeal: MealSuggestion   = MealSuggestion.suggestions[0]
+    @Published var mealAccepted: Bool            = false
+    @Published var mealSkipCount: Int            = 0
 
-    @Published var currentTask: TaskSuggestion    = TaskSuggestion.suggestions[0]
-    @Published var taskAccepted: Bool             = false
-    @Published var taskSkipCount: Int             = 0
+    // Fridge scan
+    @Published var showFridgeScan: Bool          = false
+    @Published var scanPhase: ScanPhase          = .idle
+    @Published var detectedItems: [String]       = []
 
-    @Published var pantryItems: [PantryItem]      = PantryItem.sampleData
+    // Pantry
+    @Published var pantryItems: [PantryItem]     = PantryItem.sampleData
 
-    let availableMinutes: Int    = 28
-    let energyLevel: String      = "High"
-    let timeWindow: String       = "6:50 – 7:20 PM"
+    // Context — in production these come from HealthKit / Calendar
+    let availableMinutes: Int  = 28
+    let energyLevel: String    = "High"
+    let timeWindow: String     = "6:50 – 7:20 PM"
+
+    enum ScanPhase { case idle, scanning, revealing, done }
+
+    // MARK: Meal actions
 
     func skipMeal() {
         guard !mealAccepted else { return }
@@ -81,47 +96,75 @@ class JustPickOneViewModel: ObservableObject {
             currentMeal = MealSuggestion.suggestions[mealSkipCount % MealSuggestion.suggestions.count]
         }
     }
+
     func acceptMeal() {
         withAnimation(DS.Animation.snappy) { mealAccepted = true }
     }
+
     func resetMeal() {
         withAnimation(DS.Animation.snappy) {
-            mealAccepted = false
+            mealAccepted  = false
             mealSkipCount = 0
-            currentMeal = MealSuggestion.suggestions[0]
+            currentMeal   = MealSuggestion.suggestions[0]
         }
     }
 
-    func skipTask() {
-        guard !taskAccepted else { return }
+    // MARK: Fridge scan
+
+    func beginFridgeScan() {
+        detectedItems = []
+        scanPhase     = .scanning
+        showFridgeScan = true
+
+        // Simulate computer-vision detection: items reveal one by one
+        let found = FridgeScanResult.sample
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(DS.Animation.standard) { self.scanPhase = .revealing }
+            for (i, item) in found.enumerated() {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.25) {
+                    withAnimation(DS.Animation.snappy) { self.detectedItems.append(item) }
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(found.count) * 0.25 + 0.4) {
+                withAnimation(DS.Animation.standard) { self.scanPhase = .done }
+                // Re-rank meal to prioritise expiring items
+                self.refreshMealFromScan()
+            }
+        }
+    }
+
+    func dismissFridgeScan() {
         withAnimation(DS.Animation.standard) {
-            taskSkipCount += 1
-            currentTask = TaskSuggestion.suggestions[taskSkipCount % TaskSuggestion.suggestions.count]
-        }
-    }
-    func acceptTask() {
-        withAnimation(DS.Animation.snappy) { taskAccepted = true }
-    }
-    func resetTask() {
-        withAnimation(DS.Animation.snappy) {
-            taskAccepted = false
-            taskSkipCount = 0
-            currentTask = TaskSuggestion.suggestions[0]
+            showFridgeScan = false
+            scanPhase      = .idle
         }
     }
 
-    func scanFridge() {
-        isScanning = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            withAnimation(DS.Animation.standard) { self.isScanning = false }
+    private func refreshMealFromScan() {
+        // Prefer meals that use expiring pantry items
+        let expiring = pantryItems
+            .filter { $0.daysLeft != nil && $0.daysLeft! <= 2 }
+            .map    { $0.name.lowercased() }
+
+        let ranked = MealSuggestion.suggestions.sorted { a, b in
+            let aMatch = a.ingredients.filter { expiring.contains($0.lowercased()) }.count
+            let bMatch = b.ingredients.filter { expiring.contains($0.lowercased()) }.count
+            return aMatch > bMatch
+        }
+
+        withAnimation(DS.Animation.standard) {
+            currentMeal   = ranked.first ?? MealSuggestion.suggestions[0]
+            mealSkipCount = MealSuggestion.suggestions.firstIndex(where: { $0.id == currentMeal.id }) ?? 0
         }
     }
 }
 
-// MARK: - Header  (mirrors HabitsHeaderSection exactly)
+// MARK: - Header  (mirrors HabitsHeaderSection)
+
 struct JPOHeaderSection: View {
     let availableMinutes: Int
     let energyLevel: String
+    let timeWindow: String
 
     private var dateString: String {
         let f = DateFormatter()
@@ -138,12 +181,11 @@ struct JPOHeaderSection: View {
                 Text("Just Pick One")
                     .font(DS.Font.title1())
                     .foregroundColor(DS.Color.textPrimary)
-                Text("\(availableMinutes) min window · \(energyLevel) energy")
+                Text("\(availableMinutes) min window · \(energyLevel) energy · \(timeWindow)")
                     .font(DS.Font.footnote())
                     .foregroundColor(DS.Color.textSecondary)
             }
             Spacer()
-            // Energy badge — mirrors flame badge in HabitsHeaderSection
             HStack(spacing: 5) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 14, weight: .semibold))
@@ -159,27 +201,23 @@ struct JPOHeaderSection: View {
                     .fill(DS.Color.surface)
             )
             .shadow(color: Color.black.opacity(0.07), radius: 12, x: 0, y: 4)
-            .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.04), radius: 2,  x: 0, y: 1)
         }
         .padding(.top, DS.Space.sm)
     }
 }
 
-// MARK: - Context Hero  (mirrors HabitsStreakHero — same height, same anatomy)
+// MARK: - Context Hero  (mirrors HabitsStreakHero)
+
 struct JPOContextHero: View {
     let availableMinutes: Int
     let energyLevel: String
-    let timeWindow: String
     let mealAccepted: Bool
-    let taskAccepted: Bool
 
-    private var doneCount: Int { (mealAccepted ? 1 : 0) + (taskAccepted ? 1 : 0) }
-    private var progress: Double { Double(doneCount) / 2.0 }
+    private var progress: Double { mealAccepted ? 1.0 : 0.0 }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-
-            // Flat accent base — same treatment, different accent (indigo→teal-ish)
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color(hex: "3D7EF5"))
 
@@ -187,35 +225,35 @@ struct JPOContextHero: View {
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Decisions Left")
+                        Text(mealAccepted ? "Meal locked" : "Meal pending")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white.opacity(0.70))
                             .tracking(0.3)
-                        Text("\(2 - doneCount) of 2")
+                        Text(mealAccepted ? "Done" : "1 left")
                             .font(.system(size: 36, weight: .bold))
                             .foregroundColor(.white)
                     }
                     Spacer()
-                    // Progress ring — same ProgressRing component
                     ZStack {
                         ProgressRing(
-                            progress: progress,
-                            size: 64,
-                            lineWidth: 5,
+                            progress:   progress,
+                            size:       64,
+                            lineWidth:  5,
                             trackColor: Color.white.opacity(0.18),
-                            ringColor: .white
+                            ringColor:  .white
                         )
                         Text("\(Int(progress * 100))%")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                     }
+                    .animation(DS.Animation.gentle, value: progress)
                 }
 
                 Spacer(minLength: 10)
 
-                Text(doneCount == 2
-                     ? "All set — enjoy your meal and stay focused."
-                     : "One tap to lock in your next move.")
+                Text(mealAccepted
+                     ? "All set — enjoy your meal."
+                     : "One tap to lock in what you're cooking tonight.")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.white.opacity(0.74))
                     .lineSpacing(5)
@@ -223,23 +261,21 @@ struct JPOContextHero: View {
 
                 Spacer(minLength: 28)
 
-                // Stat pills — same HeroStatPill pattern
                 HStack(spacing: 10) {
-                    HeroStatPill2(icon: "clock.fill",        value: "\(availableMinutes)m",  label: "Available")
-                    HeroStatPill2(icon: "bolt.fill",         value: energyLevel,              label: "Energy")
-                    HeroStatPill2(icon: "checkmark.circle.fill", value: "\(doneCount)/2",    label: "Decided")
+                    HeroStatPill2(icon: "clock.fill",          value: "\(availableMinutes)m", label: "Available")
+                    HeroStatPill2(icon: "bolt.fill",           value: energyLevel,            label: "Energy")
+                    HeroStatPill2(icon: "fork.knife",          value: mealAccepted ? "1" : "0", label: "Decided")
                 }
             }
             .padding(24)
         }
-        .frame(height: 248)
+        .frame(height: 232)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: Color(hex: "3D7EF5").opacity(0.45), radius: 20, x: 0, y: 8)
-        .shadow(color: Color.black.opacity(0.25), radius: 6, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(0.25),          radius:  6, x: 0, y: 4)
     }
 }
 
-// Local hero pill — identical shape to HabitsStreakHero's HeroStatPill
 private struct HeroStatPill2: View {
     let icon: String
     let value: String
@@ -265,20 +301,20 @@ private struct HeroStatPill2: View {
     }
 }
 
-// MARK: - Meal Decision Card  (mirrors HabitsCategorySection container)
+// MARK: - Meal Decision Card  (mirrors HabitsCategorySection)
+
 struct MealDecisionCard: View {
     @ObservedObject var vm: JustPickOneViewModel
 
     var body: some View {
         VStack(spacing: DS.Space.md) {
 
-            // Section header — exact HabitsCategorySection pattern (no icon)
+            // Section header
             HStack {
                 Text("Meal")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(DS.Color.textPrimary)
                 Spacer()
-                // Context badge — mirrors count badge
                 HStack(spacing: DS.Space.xs) {
                     Image(systemName: "calendar.badge.clock")
                         .font(.system(size: 11))
@@ -295,7 +331,7 @@ struct MealDecisionCard: View {
                 )
             }
 
-            // Card body — same surface + shadow as HabitsCategorySection
+            // Card body
             VStack(spacing: 0) {
                 if vm.mealAccepted {
                     MealAcceptedView(meal: vm.currentMeal) { vm.resetMeal() }
@@ -311,10 +347,12 @@ struct MealDecisionCard: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 6)
-            .shadow(color: Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.03), radius:  3, x: 0, y: 1)
         }
     }
 }
+
+// MARK: - Meal Suggestion View
 
 struct MealSuggestionView: View {
     let meal: MealSuggestion
@@ -323,20 +361,37 @@ struct MealSuggestionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.md) {
 
-            // Meal name + tags — mirrors FullHabitRow content column
+            // Name + tags
             VStack(alignment: .leading, spacing: DS.Space.xs) {
                 Text(meal.name)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundColor(DS.Color.textPrimary)
 
                 HStack(spacing: DS.Space.md) {
-                    JPOTag(icon: "clock", text: "\(meal.prepMinutes) min")
-                    JPOTag(icon: "flame", text: meal.difficulty)
+                    JPOTag(icon: "clock",  text: "\(meal.prepMinutes) min")
+                    JPOTag(icon: "flame",  text: meal.difficulty)
                     ConfidenceTag(tag: meal.confidenceTag)
                 }
             }
 
-            // Steps block — same surfaceHigh inner card
+            // Why this meal — context insight card (product doc: "confidence tag + context")
+            if let reason = meal.contextReason {
+                HStack(alignment: .top, spacing: DS.Space.sm) {
+                    Image(systemName: "lightbulb")
+                        .font(.system(size: 12, weight: .light))
+                        .foregroundColor(DS.Color.accent)
+                        .padding(.top, 1)
+                    Text(reason)
+                        .font(DS.Font.caption1())
+                        .foregroundColor(DS.Color.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(DS.Space.md)
+                .background(DS.Color.accentSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            // Steps block
             VStack(spacing: 0) {
                 ForEach(Array(meal.steps.enumerated()), id: \.offset) { idx, step in
                     HStack(alignment: .top, spacing: DS.Space.md) {
@@ -361,7 +416,7 @@ struct MealSuggestionView: View {
             .background(DS.Color.surfaceHigh)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            // Ingredients row — mirrors subtitle in FullHabitRow
+            // Ingredients row
             if !meal.ingredients.isEmpty {
                 HStack(spacing: DS.Space.xs) {
                     Image(systemName: "refrigerator")
@@ -374,23 +429,36 @@ struct MealSuggestionView: View {
                 }
             }
 
+            // Expiring ingredient warning (product doc: "flags items nearing expiry")
+            let expiringUsed = meal.ingredients.filter { ing in
+                vm.pantryItems.contains { $0.name.localizedCaseInsensitiveContains(ing) && $0.daysLeft != nil && $0.daysLeft! <= 2 }
+            }
+            if !expiringUsed.isEmpty {
+                HStack(spacing: DS.Space.xs) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(DS.Color.warning)
+                    Text("Uses expiring: \(expiringUsed.joined(separator: ", "))")
+                        .font(DS.Font.caption1())
+                        .foregroundColor(DS.Color.warning)
+                }
+                .padding(.horizontal, DS.Space.sm)
+                .padding(.vertical, DS.Space.xs)
+                .background(DS.Color.warning.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
             Divider().opacity(0.25)
 
-            // Action row — same button trio pattern
+            // Action row
             HStack(spacing: DS.Space.sm) {
-                // Scan fridge
-                Button(action: vm.scanFridge) {
+                // Fridge scan (Prysm core feature)
+                Button(action: vm.beginFridgeScan) {
                     HStack(spacing: DS.Space.xs) {
-                        if vm.isScanning {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                                .tint(DS.Color.textTertiary)
-                        } else {
-                            Image(systemName: "camera")
-                                .font(.system(size: 13, weight: .light))
-                                .foregroundColor(DS.Color.textTertiary)
-                        }
-                        Text(vm.isScanning ? "Scanning…" : "Scan fridge")
+                        Image(systemName: "camera")
+                            .font(.system(size: 13, weight: .light))
+                            .foregroundColor(DS.Color.textTertiary)
+                        Text("Scan fridge")
                             .font(DS.Font.footnote())
                             .foregroundColor(DS.Color.textTertiary)
                     }
@@ -404,7 +472,6 @@ struct MealSuggestionView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(vm.isScanning)
 
                 // Skip
                 Button(action: vm.skipMeal) {
@@ -426,7 +493,7 @@ struct MealSuggestionView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Accept — same dark fill treatment as Habits positive CTA
+                // Accept
                 Button(action: vm.acceptMeal) {
                     HStack(spacing: DS.Space.xs) {
                         Image(systemName: "checkmark")
@@ -452,6 +519,8 @@ struct MealSuggestionView: View {
     }
 }
 
+// MARK: - Meal Accepted View
+
 struct MealAcceptedView: View {
     let meal: MealSuggestion
     let onReset: () -> Void
@@ -459,9 +528,8 @@ struct MealAcceptedView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.md) {
 
-            // Accepted header — mirrors FullHabitRow checked state
+            // Accepted header — left bar + icon + content (same as FullHabitRow checked state)
             HStack(spacing: DS.Space.md) {
-                // Left color bar — same 3pt bar from FullHabitRow
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(DS.Color.positive)
                     .frame(width: 3, height: 36)
@@ -482,7 +550,7 @@ struct MealAcceptedView: View {
                 Spacer()
             }
 
-            // Steps block in positive tint
+            // Steps — positive tint
             VStack(spacing: 0) {
                 ForEach(Array(meal.steps.enumerated()), id: \.offset) { idx, step in
                     HStack(alignment: .top, spacing: DS.Space.md) {
@@ -522,263 +590,177 @@ struct MealAcceptedView: View {
     }
 }
 
-// MARK: - Task Decision Card  (mirrors HabitsCategorySection container)
-struct TaskDecisionCard: View {
+// MARK: - Fridge Scan Overlay  (product doc: Fridge Vision Integration)
+
+struct FridgeScanOverlay: View {
     @ObservedObject var vm: JustPickOneViewModel
+    @State private var scanLineY: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: DS.Space.md) {
+        ZStack {
+            // Dim backdrop
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { vm.dismissFridgeScan() }
 
-            // Section header — same text-only pattern, no icon
-            HStack {
-                Text("Task")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(DS.Color.textPrimary)
-                Spacer()
-                // Energy badge — mirrors category count badge
-                HStack(spacing: 4) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(DS.Color.accent)
-                    Text(vm.energyLevel)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(DS.Color.textTertiary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(DS.Color.textTertiary.opacity(0.08))
-                )
-            }
-
-            // Card body — same surface container
             VStack(spacing: 0) {
-                if vm.taskAccepted {
-                    TaskAcceptedView(task: vm.currentTask) { vm.resetTask() }
-                        .padding(DS.Space.base)
-                } else {
-                    TaskSuggestionView(task: vm.currentTask, vm: vm)
-                        .padding(DS.Space.base)
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(DS.Color.surface)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 6)
-            .shadow(color: Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
-        }
-    }
-}
 
-struct TaskSuggestionView: View {
-    let task: TaskSuggestion
-    @ObservedObject var vm: JustPickOneViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.md) {
-
-            // Task name + tags — same anatomy as MealSuggestionView
-            VStack(alignment: .leading, spacing: DS.Space.xs) {
-                Text(task.title)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(DS.Color.textPrimary)
-
-                HStack(spacing: DS.Space.md) {
-                    JPOTag(icon: "clock",  text: "\(task.estimatedMinutes) min")
-                    JPOTag(icon: "brain",  text: task.cognitiveLoad)
-                    JPOTag(icon: "flag",   text: task.source)
-                }
-            }
-
-            // Why now — accent-tinted inner card, same surfaceHigh treatment
-            HStack(alignment: .top, spacing: DS.Space.sm) {
-                Image(systemName: "lightbulb")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(DS.Color.accent)
-                    .padding(.top, 1)
-                Text(task.whyNow)
-                    .font(DS.Font.caption1())
-                    .foregroundColor(DS.Color.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(DS.Space.md)
-            .background(DS.Color.accentSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            // Timer hint — mirrors subtitle row
-            HStack(spacing: DS.Space.xs) {
-                Image(systemName: "timer")
-                    .font(.system(size: 11, weight: .ultraLight))
-                    .foregroundColor(DS.Color.textTertiary)
-                Text("Suggested: \(task.timerMinutes) min focus block")
-                    .font(DS.Font.caption1())
-                    .foregroundColor(DS.Color.textTertiary)
-            }
-
-            Divider().opacity(0.25)
-
-            // Action row
-            HStack(spacing: DS.Space.sm) {
-                Button(action: vm.skipTask) {
-                    HStack(spacing: DS.Space.xs) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .light))
-                        Text("Different task")
-                            .font(DS.Font.footnote())
-                    }
-                    .foregroundColor(DS.Color.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, DS.Space.sm)
-                    .background(DS.Color.surfaceHigh)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(DS.Color.border, lineWidth: 0.5)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                Button(action: vm.acceptTask) {
-                    HStack(spacing: DS.Space.xs) {
-                        Image(systemName: "timer")
-                            .font(.system(size: 12, weight: .regular))
-                        Text("Start timer")
-                            .font(DS.Font.footnote())
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, DS.Space.sm)
-                    .background(DS.Color.accent)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .transition(.asymmetric(
-            insertion: .move(edge: .trailing).combined(with: .opacity),
-            removal:   .move(edge: .leading).combined(with: .opacity)
-        ))
-        .id(task.id)
-    }
-}
-
-struct TaskAcceptedView: View {
-    let task: TaskSuggestion
-    let onReset: () -> Void
-
-    @State private var secondsElapsed: Int = 0
-    @State private var timerActive: Bool   = true
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var elapsed: String {
-        let m = secondsElapsed / 60
-        let s = secondsElapsed % 60
-        return String(format: "%d:%02d", m, s)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Space.md) {
-
-            // Accepted header — same left-bar + icon + content anatomy as FullHabitRow
-            HStack(spacing: DS.Space.md) {
+                // Handle
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(DS.Color.accent)
-                    .frame(width: 3, height: 36)
+                    .fill(DS.Color.textQuaternary)
+                    .frame(width: 36, height: 4)
+                    .padding(.bottom, DS.Space.md)
 
-                Image(systemName: "timer")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(DS.Color.accent)
-                    .frame(width: 30, alignment: .center)
+                // Sheet
+                VStack(alignment: .leading, spacing: DS.Space.lg) {
 
-                VStack(alignment: .leading, spacing: DS.Space.xxs) {
-                    Text("In progress")
-                        .font(DS.Font.caption1())
-                        .foregroundColor(DS.Color.accent)
-                    Text(task.title)
-                        .font(DS.Font.headline())
-                        .foregroundColor(DS.Color.textPrimary)
-                }
-                Spacer()
-
-                // Live timer — right-aligned, same trailing meta position as streak chip
-                VStack(alignment: .trailing, spacing: DS.Space.xxs) {
-                    Text(elapsed)
-                        .font(DS.Font.mono(20))
-                        .foregroundColor(DS.Color.textPrimary)
-                        .onReceive(timer) { _ in
-                            if timerActive { secondsElapsed += 1 }
+                    // Header
+                    HStack {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 18, weight: .light))
+                            .foregroundColor(DS.Color.accent)
+                        Text("Fridge Vision")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(DS.Color.textPrimary)
+                        Spacer()
+                        Button(action: vm.dismissFridgeScan) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(DS.Color.textTertiary)
+                                .padding(8)
+                                .background(DS.Color.surfaceHigh)
+                                .clipShape(Circle())
                         }
-                    Text("elapsed")
-                        .font(DS.Font.caption2())
-                        .foregroundColor(DS.Color.textTertiary)
-                }
-            }
-
-            // Progress bar — same thin capsule used in PlanView / HomeView
-            let targetSeconds = task.timerMinutes * 60
-            let progress = min(Double(secondsElapsed) / Double(targetSeconds), 1.0)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(DS.Color.textQuaternary)
-                        .frame(height: 2)
-                    Capsule()
-                        .fill(DS.Color.accent)
-                        .frame(width: geo.size.width * progress, height: 2)
-                        .animation(DS.Animation.gentle, value: progress)
-                }
-            }
-            .frame(height: 2)
-
-            // Action row
-            HStack(spacing: DS.Space.sm) {
-                Button {
-                    timerActive.toggle()
-                } label: {
-                    HStack(spacing: DS.Space.xs) {
-                        Image(systemName: timerActive ? "pause" : "play")
-                            .font(.system(size: 12, weight: .light))
-                        Text(timerActive ? "Pause" : "Resume")
-                            .font(DS.Font.footnote())
+                        .buttonStyle(.plain)
                     }
-                    .foregroundColor(DS.Color.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, DS.Space.sm)
-                    .background(DS.Color.surfaceHigh)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(DS.Color.border, lineWidth: 0.5)
-                    )
-                }
-                .buttonStyle(.plain)
 
-                Button(action: onReset) {
-                    HStack(spacing: DS.Space.xs) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .regular))
-                        Text("Done")
-                            .font(DS.Font.footnote())
-                            .fontWeight(.medium)
+                    // Viewfinder
+                    ZStack(alignment: .top) {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(DS.Color.surfaceHigh)
+                            .frame(height: 180)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(DS.Color.border, lineWidth: 0.5)
+                            )
+
+                        if vm.scanPhase == .scanning {
+                            // Animated scan line
+                            GeometryReader { geo in
+                                Capsule()
+                                    .fill(DS.Color.accent.opacity(0.7))
+                                    .frame(height: 2)
+                                    .offset(y: scanLineY)
+                                    .onAppear {
+                                        withAnimation(
+                                            .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                        ) { scanLineY = geo.size.height - 2 }
+                                    }
+                            }
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                            VStack {
+                                Spacer()
+                                Text("Scanning contents…")
+                                    .font(DS.Font.caption1())
+                                    .foregroundColor(DS.Color.textTertiary)
+                                    .padding(.bottom, DS.Space.md)
+                            }
+                            .frame(height: 180)
+                        }
+
+                        if vm.scanPhase == .revealing || vm.scanPhase == .done {
+                            // Detected items appear one-by-one
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: DS.Space.sm) {
+                                    ForEach(vm.detectedItems, id: \.self) { item in
+                                        Text(item)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(DS.Color.accent)
+                                            .padding(.horizontal, DS.Space.sm)
+                                            .padding(.vertical, DS.Space.xs)
+                                            .background(DS.Color.accentSoft)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                            .transition(.scale(scale: 0.85).combined(with: .opacity))
+                                    }
+                                }
+                                .padding(.horizontal, DS.Space.md)
+                            }
+                            .frame(height: 180)
+                        }
                     }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, DS.Space.sm)
-                    .background(DS.Color.positive)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    // Status / result
+                    if vm.scanPhase == .done {
+                        VStack(alignment: .leading, spacing: DS.Space.sm) {
+                            HStack(spacing: DS.Space.xs) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(DS.Color.positive)
+                                    .font(.system(size: 14))
+                                Text("\(vm.detectedItems.count) items detected. Meal suggestion updated.")
+                                    .font(DS.Font.footnote())
+                                    .foregroundColor(DS.Color.textSecondary)
+                            }
+
+                            // Expiry highlight
+                            let expiringDetected = vm.pantryItems
+                                .filter { $0.daysLeft != nil && $0.daysLeft! <= 2 }
+                            if !expiringDetected.isEmpty {
+                                HStack(spacing: DS.Space.xs) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(DS.Color.warning)
+                                        .font(.system(size: 12))
+                                    Text("Prioritised recipe using: \(expiringDetected.map { $0.name }.joined(separator: ", "))")
+                                        .font(DS.Font.caption1())
+                                        .foregroundColor(DS.Color.warning)
+                                }
+                                .padding(DS.Space.sm)
+                                .background(DS.Color.warning.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                        }
+
+                        // Done button
+                        Button(action: vm.dismissFridgeScan) {
+                            Text("Use this suggestion")
+                                .font(DS.Font.footnote())
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, DS.Space.sm)
+                                .background(DS.Color.textPrimary)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                    } else if vm.scanPhase == .scanning {
+                        HStack(spacing: DS.Space.sm) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .tint(DS.Color.textTertiary)
+                            Text("Identifying ingredients…")
+                                .font(DS.Font.caption1())
+                                .foregroundColor(DS.Color.textTertiary)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(DS.Space.lg)
+                .background(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(DS.Color.surface)
+                )
+                .shadow(color: Color.black.opacity(0.18), radius: 30, x: 0, y: -4)
             }
+            .padding(.horizontal, DS.Space.base)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, DS.Space.xl)
         }
-        .transition(.opacity)
     }
 }
 
-// MARK: - Pantry Status Section  (mirrors HabitsWeekGrid section anatomy)
+// MARK: - Pantry Status Section  (mirrors HabitsWeekGrid anatomy)
+
 struct PantryStatusSection: View {
     let items: [PantryItem]
 
@@ -788,52 +770,43 @@ struct PantryStatusSection: View {
     var body: some View {
         VStack(spacing: DS.Space.md) {
 
-            // Section header — same HStack pattern, no icon, badge on right
             HStack {
                 Text("Pantry")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(DS.Color.textPrimary)
                 Spacer()
-                HStack(spacing: DS.Space.sm) {
-                    if !expiringItems.isEmpty {
-                        Text("\(expiringItems.count) expiring")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(DS.Color.warning)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(DS.Color.warning.opacity(0.10))
-                            )
-                    }
-                    Button {
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "camera")
-                                .font(.system(size: 11, weight: .light))
-                            Text("Scan")
-                                .font(DS.Font.footnote())
-                        }
-                        .foregroundColor(DS.Color.accent)
+                if !expiringItems.isEmpty {
+                    Text("\(expiringItems.count) expiring")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(DS.Color.warning)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(DS.Color.accent.opacity(0.08))
+                                .fill(DS.Color.warning.opacity(0.10))
                         )
-                    }
-                    .buttonStyle(.plain)
                 }
+                Button { } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "camera")
+                            .font(.system(size: 11, weight: .light))
+                        Text("Scan")
+                            .font(DS.Font.footnote())
+                    }
+                    .foregroundColor(DS.Color.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(DS.Color.accent.opacity(0.08))
+                    )
+                }
+                .buttonStyle(.plain)
             }
 
-            // Rows — same surface card + shadow, no dividers
             VStack(spacing: 0) {
-                ForEach(expiringItems) { item in
-                    PantryRow(item: item)
-                }
-                ForEach(freshItems) { item in
-                    PantryRow(item: item)
-                }
+                ForEach(expiringItems) { item in PantryRow(item: item) }
+                ForEach(freshItems)    { item in PantryRow(item: item) }
             }
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -841,7 +814,7 @@ struct PantryStatusSection: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: 6)
-            .shadow(color: Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
+            .shadow(color: Color.black.opacity(0.03), radius:  3, x: 0, y: 1)
         }
     }
 }
@@ -853,26 +826,21 @@ struct PantryRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-
-            // Left color bar — same 3pt bar from FullHabitRow
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(isExpiring ? DS.Color.warning : DS.Color.textQuaternary.opacity(0.3))
                 .frame(width: 3, height: 28)
 
-            // Icon
             Image(systemName: item.icon)
                 .font(.system(size: 16, weight: .light))
                 .foregroundColor(isExpiring ? DS.Color.warning : DS.Color.textTertiary)
                 .frame(width: 24, alignment: .center)
 
-            // Name
             Text(item.name)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(DS.Color.textPrimary)
 
             Spacer()
 
-            // Trailing meta — mirrors streak chip position
             if let days = item.daysLeft {
                 Text(days <= 1 ? "Expires today" : "Expires in \(days)d")
                     .font(DS.Font.caption1())
@@ -901,7 +869,8 @@ struct PantryRow: View {
     }
 }
 
-// MARK: - Supporting UI  (unchanged — shared helpers)
+// MARK: - Shared atoms
+
 struct JPOTag: View {
     let icon: String
     let text: String
@@ -920,9 +889,10 @@ struct JPOTag: View {
 
 struct ConfidenceTag: View {
     enum Tag: String {
-        case favorite = "Favourite"
-        case newEasy  = "New · easy"
-        case useItUp  = "Use it up"
+        case favorite  = "Favourite"
+        case newEasy   = "New · easy"
+        case useItUp   = "Use it up"
+        case quickWin  = "Quick win"
     }
     let tag: Tag
 
@@ -931,6 +901,7 @@ struct ConfidenceTag: View {
         case .favorite: return DS.Color.accent
         case .newEasy:  return DS.Color.categoryB
         case .useItUp:  return DS.Color.warning
+        case .quickWin: return DS.Color.positive
         }
     }
 
@@ -945,7 +916,7 @@ struct ConfidenceTag: View {
     }
 }
 
-// MARK: - Models  (unchanged)
+// MARK: - Models
 
 struct MealSuggestion: Identifiable {
     let id = UUID()
@@ -955,100 +926,60 @@ struct MealSuggestion: Identifiable {
     var confidenceTag: ConfidenceTag.Tag
     var ingredients: [String]
     var steps: [String]
+    var contextReason: String?   // product doc: "why this meal right now"
 
     static let suggestions: [MealSuggestion] = [
         MealSuggestion(
-            name: "Garlic butter pasta",
-            prepMinutes: 18,
-            difficulty: "Easy",
-            confidenceTag: .favorite,
-            ingredients: ["Pasta", "Garlic", "Butter", "Parmesan"],
-            steps: [
-                "Boil salted water, cook pasta until al dente (11 min).",
-                "Melt butter in pan, sauté minced garlic 2 min until fragrant.",
-                "Toss pasta in butter sauce, finish with parmesan and black pepper."
-            ]
-        ),
-        MealSuggestion(
-            name: "Egg fried rice",
-            prepMinutes: 12,
-            difficulty: "Easy",
+            name:          "Egg fried rice",
+            prepMinutes:   12,
+            difficulty:    "Easy",
             confidenceTag: .useItUp,
-            ingredients: ["Rice", "Eggs", "Soy sauce", "Spring onion"],
+            ingredients:   ["Rice", "Eggs", "Soy sauce", "Spring onion"],
             steps: [
                 "Heat wok or pan until very hot. Add oil.",
                 "Scramble eggs in pan, push to side. Add cold rice, break up clumps.",
-                "Add soy sauce and spring onion. Toss everything together 2 min."
-            ]
+                "Add soy sauce and spring onion. Toss everything together 2 min.",
+            ],
+            contextReason: "Your eggs expire today and you have leftover rice — this clears both."
         ),
         MealSuggestion(
-            name: "Avocado toast with poached egg",
-            prepMinutes: 10,
-            difficulty: "Easy",
-            confidenceTag: .newEasy,
-            ingredients: ["Bread", "Avocado", "Eggs", "Lemon"],
+            name:          "Garlic butter pasta",
+            prepMinutes:   18,
+            difficulty:    "Easy",
+            confidenceTag: .favorite,
+            ingredients:   ["Pasta", "Garlic", "Butter", "Parmesan"],
+            steps: [
+                "Boil salted water, cook pasta until al dente (11 min).",
+                "Melt butter in pan, sauté minced garlic 2 min until fragrant.",
+                "Toss pasta in butter sauce, finish with parmesan and black pepper.",
+            ],
+            contextReason: "You've cooked this 6 times and always rated it well. Fits in your 28-min window."
+        ),
+        MealSuggestion(
+            name:          "Avocado toast with poached egg",
+            prepMinutes:   10,
+            difficulty:    "Easy",
+            confidenceTag: .quickWin,
+            ingredients:   ["Bread", "Avocado", "Eggs", "Lemon"],
             steps: [
                 "Toast bread. Mash avocado with lemon juice, salt, and pepper.",
                 "Bring water to gentle simmer, add splash of vinegar. Crack egg in.",
-                "Poach egg 3 min. Spread avo on toast, top with egg and chilli flakes."
-            ]
+                "Poach egg 3 min. Spread avo on toast, top with egg and chilli flakes.",
+            ],
+            contextReason: "Shortest prep time available. Perfect before your 7:20 PM commitment."
         ),
         MealSuggestion(
-            name: "Chicken stir fry",
-            prepMinutes: 22,
-            difficulty: "Medium",
+            name:          "Chicken stir fry",
+            prepMinutes:   22,
+            difficulty:    "Medium",
             confidenceTag: .favorite,
-            ingredients: ["Chicken breast", "Broccoli", "Soy sauce", "Garlic"],
+            ingredients:   ["Chicken breast", "Broccoli", "Soy sauce", "Garlic"],
             steps: [
                 "Slice chicken thin. Mix soy sauce, garlic, a bit of sesame oil.",
                 "High heat: cook chicken 4 min each side until golden. Set aside.",
-                "Stir fry broccoli 3 min, return chicken, pour sauce over. Toss."
-            ]
-        ),
-    ]
-}
-
-struct TaskSuggestion: Identifiable {
-    let id = UUID()
-    var title: String
-    var estimatedMinutes: Int
-    var cognitiveLoad: String
-    var source: String
-    var whyNow: String
-    var timerMinutes: Int
-
-    static let suggestions: [TaskSuggestion] = [
-        TaskSuggestion(
-            title: "Review thesis outline",
-            estimatedMinutes: 45,
-            cognitiveLoad: "Deep work",
-            source: "Todoist",
-            whyNow: "Your energy is at peak right now (9–11am window). This is your highest-leverage task before the 1pm deadline pressure.",
-            timerMinutes: 45
-        ),
-        TaskSuggestion(
-            title: "Reply to prof email",
-            estimatedMinutes: 10,
-            cognitiveLoad: "Reactive",
-            source: "Mail",
-            whyNow: "Quick win. Clears a mental loop that's been open since yesterday. Best done before your focus block.",
-            timerMinutes: 15
-        ),
-        TaskSuggestion(
-            title: "Review lecture notes — CCS 101",
-            estimatedMinutes: 30,
-            cognitiveLoad: "Study",
-            source: "Plan",
-            whyNow: "Class is in 2.5 hours. A quick review now will make the lecture land better.",
-            timerMinutes: 30
-        ),
-        TaskSuggestion(
-            title: "Plan tomorrow's schedule",
-            estimatedMinutes: 10,
-            cognitiveLoad: "Admin",
-            source: "Prysm",
-            whyNow: "Your energy is winding down. Admin work fits this window perfectly — saves you decision fatigue tomorrow morning.",
-            timerMinutes: 10
+                "Stir fry broccoli 3 min, return chicken, pour sauce over. Toss.",
+            ],
+            contextReason: nil
         ),
     ]
 }
@@ -1061,13 +992,21 @@ struct PantryItem: Identifiable {
     var daysLeft: Int?
 
     static let sampleData: [PantryItem] = [
-        PantryItem(icon: "leaf",           name: "Spinach",   quantity: "1 bag",  daysLeft: 1),
-        PantryItem(icon: "oval",           name: "Eggs",      quantity: "4 left", daysLeft: 2),
-        PantryItem(icon: "drop.fill",      name: "Milk",      quantity: "Half",   daysLeft: 2),
-        PantryItem(icon: "circle.fill",    name: "Pasta",     quantity: "500g",   daysLeft: nil),
-        PantryItem(icon: "cube.fill",      name: "Rice",      quantity: "1kg",    daysLeft: nil),
-        PantryItem(icon: "bolt.fill",      name: "Olive oil", quantity: "Plenty", daysLeft: nil),
-        PantryItem(icon: "star.fill",      name: "Garlic",    quantity: "1 head", daysLeft: nil),
-        PantryItem(icon: "rectangle.fill", name: "Butter",    quantity: "100g",   daysLeft: nil),
+        PantryItem(icon: "leaf",            name: "Spinach",   quantity: "1 bag",  daysLeft: 1),
+        PantryItem(icon: "oval",            name: "Eggs",      quantity: "4 left", daysLeft: 1),
+        PantryItem(icon: "drop.fill",       name: "Milk",      quantity: "Half",   daysLeft: 2),
+        PantryItem(icon: "circle.fill",     name: "Pasta",     quantity: "500 g",  daysLeft: nil),
+        PantryItem(icon: "cube.fill",       name: "Rice",      quantity: "1 kg",   daysLeft: nil),
+        PantryItem(icon: "bolt.fill",       name: "Olive oil", quantity: "Plenty", daysLeft: nil),
+        PantryItem(icon: "star.fill",       name: "Garlic",    quantity: "1 head", daysLeft: nil),
+        PantryItem(icon: "rectangle.fill",  name: "Butter",    quantity: "100 g",  daysLeft: nil),
+    ]
+}
+
+// Simulated fridge scan result (in production: on-device CV model output)
+enum FridgeScanResult {
+    static let sample: [String] = [
+        "Eggs", "Spinach", "Milk", "Leftover rice",
+        "Butter", "Garlic", "Soy sauce", "Parmesan",
     ]
 }
